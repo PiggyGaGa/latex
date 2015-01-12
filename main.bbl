@@ -1,0 +1,17 @@
+\begin{thebibliography}{1}
+
+\bibitem{Nickolls:2008:SPP:1365490.1365500}
+J.~Nickolls, I.~Buck, M.~Garland, and K.~Skadron, ``Scalable parallel
+  programming with cuda,'' {\em Queue}, vol.~6, pp.~40--53, Mar. 2008.
+
+\bibitem{Applications}
+``Gpu-accelerated applications.''
+  \url{http://www.nvidia.com/content/tesla/pdf/gpu-apps-catalog-mar14-digital-fnl-hr.pdf}.
+\newblock Accessed: 2015-1-8.
+
+\bibitem{Fermi}
+``Introduction to cuda.''
+  \url{http://www.karimson.com/posts/introduction-to-cuda/}.
+\newblock Accessed: 2015-1-8.
+
+\end{thebibliography}
