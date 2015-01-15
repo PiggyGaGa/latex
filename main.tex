@@ -8,6 +8,8 @@
 \usepackage{authblk}
 \usepackage{url}
 \usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{amsmath}
 
 %\DeclareGraphicsExtensions{.pdf,.png,.jpg}
 
@@ -91,8 +93,181 @@ CUDA采用这样一种多层级、嵌套式的方式组织线程，获得了一�
 GPU内部的SM，被设计成为SIMT（Single Instruction Multi-Thread）结构。在SIMT结构下，处理器以wrap为最小单位对线程进行调度和管理。当一个wrap被调度时，它所包含的32个thread从同一条指令开始执行；而每个thread拥有其独立的程序计数器和寄存器，所以同一个wrap中的多个thread可以自由进行分支跳转，相互独立地运行。在无跳转发生时，同一wrap中的所有thread共享执行路径；在有跳转发生时，处理器先后串行执行处于不同执行路径上的thread，直至所有分支路径最后又收敛到同一执行路径。忽略SIMT的这些处理细节，是可以保证程序的正确性的。而基于SIMT结构的这些特点，在编写thread代码时，有意识地规避掉执行路径出现分歧的情况，是提高程序性能的一个很好的切入点。
 %Not all of the thousands or millions of threads actually run in parallel, but many do. Specifically, an NVIDIA GPU contains several largely independent processors called "Streaming Multiprocessors" (SMs), each SM hosts several "cores", and each "core" runs a thread.
 
+\section{基于CUDA实现SpMV}
+针对稀疏矩阵中多数元素为0的这一特点，往往采用压缩存储的方式，实现更高效的存储。本节后续部分，将对几种常见的压缩方式如CSR、ELL等进行简要介绍。
 
-\section{基于CUDA实现SpVM}
+基于CUDA编写的GPU并行程序，可以分为运行在CPU上的串行部分，和运行在GPU上的并行部分。往往以host代指CPU，以device代指GPU.运行在GPU上的线程，被称为kernel.将一个计算任务划分成若干个可以并行执行的子任务的过程，主要体现在对kernel的编写上。
+
+\subsection{几种典型的稀疏矩阵存储格式}
+\subsubsection{DIA}
+\begin{figure} 
+  \centering 
+  \subfigure{ 
+    \label{fig:subfig:a} %% label for first subfigure 
+    	$
+		A = \begin{bmatrix}
+				1 & 7 & 0 & 0         \\[0.3em]
+				0 & 2 & 8 & 0         \\[0.3em]
+				5 & 0 & 3 & 9         \\[0.3em]
+				0 & 6 & 0 & 4
+		\end{bmatrix}
+		$
+		}
+  \hspace{3in} 
+  \subfigure{ 
+    \label{fig:subfig:b} %% label for second subfigure 
+    	$
+		data = \begin{bmatrix}
+				* & 1 & 7         \\[0.3em]
+				* & 2 & 8         \\[0.3em]
+				5 & 3 & 9         \\[0.3em]
+				6 & 4 & *
+		\end{bmatrix}
+		$
+		$
+		offsets = \begin{bmatrix}
+				-2 & 0 & 1
+		\end{bmatrix}
+		$
+    } 
+  \caption{对角矩阵A的DIA表示} 
+  \label{fig:DIA} %% label for entire figure 
+\end{figure}
+
+针对对角矩阵、分块对角矩阵等非零元素主要集中在主对角线附近区域的稀疏矩阵，
+可以使用DIA格式实现高效存储。
+如图~\ref{fig:DIA}所示：
+
+DIA表示由data和offsets两部分组成。data矩阵中的一列，对应矩阵A中的一条非全零对角线，向量offsets一次存放了相应列编号相对主对角列编号的偏移量。
+由于超对角线和次对角线上的元素少于主对角线元素，data矩阵中的相应列会出现空缺，应对的方案是分别在次对角线列和超对角线列的头部和尾部添加无关元素。
+这样做是为了使data中非零元的行坐标与A中保持一致，非零元的列坐标可以由行坐标加偏移量获得，进一步提高了存储效率。
+\subsubsection{ELL}
+\begin{figure} 
+  \centering 
+  \subfigure{ 
+    \label{fig:subfig:a} %% label for first subfigure 
+    	$
+		A = \begin{bmatrix}
+				1 & 7 & 0 & 0         \\[0.3em]
+				0 & 2 & 8 & 0         \\[0.3em]
+				5 & 0 & 3 & 9         \\[0.3em]
+				0 & 6 & 0 & 4
+		\end{bmatrix}
+		$
+		}
+  \hspace{3in} 
+  \subfigure{ 
+    \label{fig:subfig:b} %% label for second subfigure 
+    	$
+		data = \begin{bmatrix}
+				1 & 7 & *         \\[0.3em]
+				2 & 8 & *         \\[0.3em]
+				5 & 3 & 9         \\[0.3em]
+				6 & 4 & *
+		\end{bmatrix}
+		$
+		$
+		indices = \begin{bmatrix}
+				0 & 1 & * \\[0.3em]
+				1 & 2 & * \\[0.3em]
+				0 & 2 & 3 \\[0.3em]
+				1 & 3 & * 
+		\end{bmatrix}
+		$
+    } 
+  \caption{对角矩阵A的ELL表示} 
+  \label{fig:subfig} %% label for entire figure 
+\end{figure}
+
+
+
+\subsubsection{COO}
+\begin{figure} 
+  \centering 
+  \subfigure{ 
+    \label{fig:subfig:a} %% label for first subfigure 
+    	$
+		A = \begin{bmatrix}
+				1 & 7 & 0 & 0         \\[0.3em]
+				0 & 2 & 8 & 0         \\[0.3em]
+				5 & 0 & 3 & 9         \\[0.3em]
+				0 & 6 & 0 & 4
+		\end{bmatrix}
+		$
+		}
+  \hspace{3in} 
+  \subfigure{ 
+    \label{fig:subfig:b} %% label for second subfigure 
+    	$
+		row = \begin{bmatrix}
+				0 & 0 & 1 & 1 & 2 & 2 & 2 & 3 & 3 &
+		\end{bmatrix}
+		$
+    }
+  \subfigure{ 
+    \label{fig:subfig:c} %% label for second subfigure 
+    	$
+		col = \begin{bmatrix}
+				0 & 1 & 1 & 2 & 0 & 2 & 3 & 1 & 3 &
+		\end{bmatrix}
+		$
+    }
+  \subfigure{ 
+    \label{fig:subfig:d} %% label for second subfigure 
+    	$
+		data = \begin{bmatrix}
+				1 & 7 & 2 & 8 & 5 & 3 & 9 & 6 & 4 &
+		\end{bmatrix}
+		$
+    } 
+  \caption{对角矩阵A的COO表示} 
+  \label{fig:subfig} %% label for entire figure 
+\end{figure}
+\subsubsection{CSR}
+\begin{figure} 
+  \centering 
+  \subfigure{ 
+    \label{fig:subfig:a} %% label for first subfigure 
+    	$
+		A = \begin{bmatrix}
+				1 & 7 & 0 & 0         \\[0.3em]
+				0 & 2 & 8 & 0         \\[0.3em]
+				5 & 0 & 3 & 9         \\[0.3em]
+				0 & 6 & 0 & 4
+		\end{bmatrix}
+		$
+		}
+  \hspace{3in} 
+  \subfigure{ 
+    \label{fig:subfig:b} %% label for second subfigure 
+    	$
+		ptr = \begin{bmatrix}
+				0 & 2 & 4 & 7 & 9 &
+		\end{bmatrix}
+		$
+    }
+  \subfigure{ 
+    \label{fig:subfig:c} %% label for second subfigure 
+    	$
+		indices = \begin{bmatrix}
+				0 & 1 & 1 & 2 & 0 & 2 & 3 & 1 & 3 &
+		\end{bmatrix}
+		$
+    }
+  \subfigure{ 
+    \label{fig:subfig:d} %% label for second subfigure 
+    	$
+		data = \begin{bmatrix}
+				1 & 7 & 2 & 8 & 5 & 3 & 9 & 6 & 4 &
+		\end{bmatrix}
+		$
+    } 
+  \caption{对角矩阵A的CSR表示} 
+  \label{fig:subfig} %% label for entire figure 
+\end{figure}
+\subsubsection{Hybrid}
+\subsection{}
+
 \section{总结}
 
 \renewcommand\refname{引用}
