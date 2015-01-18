@@ -14,4 +14,22 @@ J.~Nickolls, I.~Buck, M.~Garland, and K.~Skadron, ``Scalable parallel
   \url{http://www.karimson.com/posts/introduction-to-cuda/}.
 \newblock Accessed: 2015-1-8.
 
+\bibitem{Bell:SpMV:NVIDIA:2008}
+N.~Bell and M.~Garland, ``Efficient sparse matrix-vector multiplication on
+  {CUDA},'' NVIDIA Technical Report NVR-2008-004, NVIDIA Corporation, Dec.
+  2008.
+
+\bibitem{MatrixMarket}
+``The matrix market.'' \url{http://math.nist.gov/MatrixMarket/}.
+\newblock Accessed: 2015-1-17.
+
+\bibitem{wuzw}
+``Evaluation scripts.'' \url{https://github.com/wuzw10/cuda_evaluation}.
+\newblock Accessed: 2015-1-18.
+
+\bibitem{MetricsImplementation}
+``Implement performance metrics in cuda c/c++.''
+  \url{http://devblogs.nvidia.com/parallelforall/how-implement-performance-metrics-cuda-cc/}.
+\newblock Accessed: 2015-1-17.
+
 \end{thebibliography}
